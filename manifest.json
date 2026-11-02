@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Local Capture",
+  "description": "웹 페이지와 문서를 기기에서 캡처하고 편집합니다.",
+  "version": "0.1.0",
+  "minimum_chrome_version": "116",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "options_page": "app.html#settings",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "offscreen",
+    "webNavigation"
+  ],
+  "optional_permissions": ["downloads", "tabs", "clipboardWrite"],
+  "optional_host_permissions": ["<all_urls>"],
+  "commands": {
+    "capture-page": {
+      "suggested_key": { "default": "Alt+Shift+S" },
+      "description": "페이지 캡처"
+    },
+    "pick-element": {
+      "suggested_key": { "default": "Alt+Shift+E" },
+      "description": "영역 선택"
+    }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; worker-src 'self'"
+  }
+}
