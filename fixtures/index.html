@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local capture fixtures</title>
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; font: 18px sans-serif; }
+#page { position: relative; }
+.cell { display: flex; align-items: center; justify-content: center; border: 2px solid #222; font-size: 24px; font-weight: bold; }
+#about { position: fixed; z-index: 100; right: 0; top: 0; max-width: 320px; padding: 6px; background: white; border: 1px solid black; font-size: 14px; }
+#about p { margin: 4px 0; }
+#controls { position: fixed; z-index: 101; right: 0; bottom: 0; padding: 6px; background: white; border: 1px solid black; }
+button { font: inherit; }
+</style>
+</head>
+<body>
+<main id="page"></main>
+<aside id="about"><strong>Fixture geometry</strong><p id="geometry"></p></aside>
+<script>
+const crossOrigin = __CROSS_ORIGIN_JSON__;
+const route = location.pathname === '/' ? 'grid' : location.pathname.slice(1);
+const page = document.querySelector('#page');
+const geometry = document.querySelector('#geometry');
+const colors = ['#c8e6f5', '#ffe2aa', '#d7efc0', '#efccdf', '#ddd2f4', '#f5dabf'];
+function size(width, height, note = '') {
+  page.style.width = `${width}px`;
+  page.style.height = `${height}px`;
+  geometry.textContent = `Page ${width} × ${height} CSS px${note ? `; ${note}` : ''}`;
+}
+function cells(parent, columns, rows, width, height, prefix = 'cell') {
+  parent.style.display = 'grid';
+  parent.style.gridTemplateColumns = `repeat(${columns}, ${width}px)`;
+  parent.style.gridTemplateRows = `repeat(${rows}, ${height}px)`;
+  for (let row = 0; row < rows; row++) for (let col = 0; col < columns; col++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.id = `${prefix}-${row + 1}-${col + 1}`;
+    cell.textContent = `${prefix} ${row + 1}, ${col + 1}`;
+    cell.style.background = colors[(row * columns + col) % colors.length];
+    parent.append(cell);
+  }
+}
+function controls() {
+  const element = document.createElement('div');
+  element.id = 'controls';
+  document.body.append(element);
+  return element;
+}
+function button(parent, label, action) {
+  const element = document.createElement('button');
+  element.type = 'button';
+  element.textContent = label;
+  element.addEventListener('click', action);
+  parent.append(element);
+}
+if (route === 'grid' || route === 'batch1' || route === 'batch2') {
+  size(1200, 4800);
+  cells(page, 3, 12, 400, 400, route === 'grid' ? 'cell' : route);
+} else if (route === 'short') {
+  size(800, 400);
+  cells(page, 2, 1, 400, 400);
+} else if (route === 'axes') {
+  size(2400, 3600);
+  cells(page, 6, 9, 400, 400);
+} else if (route === 'nested') {
+  size(1200, 1000, 'nested viewport 700 × 350; nested content 700 × 2100');
+  const nested = document.createElement('div');
+  nested.id = 'nested';
+  Object.assign(nested.style, { width: '700px', height: '350px', overflow: 'auto', margin: '100px' });
+  page.append(nested);
+  const content = document.createElement('div');
+  nested.append(content);
+  cells(content, 1, 6, 700, 350, 'nested-cell');
+} else if (route === 'sticky') {
+  size(1200, 4800, 'sticky header and footer 60 px; fixed header and footer 40 px');
+  const header = document.createElement('header');
+  header.id = 'sticky-header';
+  header.textContent = 'Sticky header';
+  Object.assign(header.style, { position: 'sticky', top: '40px', height: '60px', background: '#ffb85c', zIndex: '2' });
+  page.append(header);
+  const content = document.createElement('div');
+  page.append(content);
+  cells(content, 3, 12, 400, 390);
+  const footer = document.createElement('footer');
+  footer.id = 'sticky-footer';
+  footer.textContent = 'Sticky footer';
+  Object.assign(footer.style, { position: 'sticky', bottom: '40px', height: '60px', background: '#ffb85c', zIndex: '2' });
+  page.append(footer);
+  for (const edge of ['top', 'bottom']) {
+    const fixed = document.createElement('div');
+    fixed.id = `fixed-${edge}`;
+    fixed.textContent = `Fixed ${edge}`;
+    Object.assign(fixed.style, { position: 'fixed', [edge]: '0', left: '0', width: '100%', height: '40px', background: '#82b4e8', zIndex: '3' });
+    document.body.append(fixed);
+  }
+} else if (route === 'lazy') {
+  let count = 0;
+  const max = 8;
+  function grow() {
+    if (count >= max) return;
+    count++;
+    const section = document.createElement('section');
+    section.id = `lazy-cell-${count}`;
+    Object.assign(section.style, { height: '400px', width: '1200px', background: colors[(count - 1) % colors.length], border: '2px solid black' });
+    const image = document.createElement('img');
+    image.alt = `Decoded image ${count}`;
+    image.width = 400;
+    image.height = 200;
+    image.loading = 'lazy';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200" fill="${colors[(count - 1) % colors.length]}"/><text x="20" y="100" font-size="32">Image ${count}</text></svg>`;
+    image.src = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+    section.append(`Lazy section ${count} `, image);
+    page.append(section);
+    size(1200, count * 400, `lazy sections ${count}/${max}, each 1200 × 400`);
+    observer.observe(section);
+  }
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) if (entry.isIntersecting && entry.target === page.lastElementChild) {
+      observer.unobserve(entry.target);
+      grow();
+    }
+  });
+  button(controls(), 'Grow', grow);
+  grow();
+} else if (route === 'reverse') {
+  size(1200, 1000, 'reverse chat viewport 700 × 350; 30 messages');
+  const chat = document.createElement('div');
+  chat.id = 'chat';
+  Object.assign(chat.style, { display: 'flex', flexDirection: 'column-reverse', overflowY: 'auto', width: '700px', height: '350px', margin: '100px', border: '2px solid black' });
+  for (let i = 30; i >= 1; i--) {
+    const message = document.createElement('div');
+    message.id = `message-${i}`;
+    message.textContent = `Message ${i}`;
+    Object.assign(message.style, { flex: '0 0 70px', background: colors[i % colors.length], borderBottom: '1px solid black' });
+    chat.append(message);
+  }
+  page.append(chat);
+} else if (route === 'virtual') {
+  size(1200, 1000, 'virtual viewport 700 × 350; 100 rows × 70 px, total 7000 px');
+  const viewport = document.createElement('div');
+  viewport.id = 'virtual';
+  Object.assign(viewport.style, { overflowY: 'auto', width: '700px', height: '350px', margin: '100px', border: '2px solid black' });
+  const spacer = document.createElement('div');
+  Object.assign(spacer.style, { height: '7000px', position: 'relative' });
+  viewport.append(spacer);
+  page.append(viewport);
+  function render() {
+    spacer.replaceChildren();
+    const first = Math.max(0, Math.floor(viewport.scrollTop / 70) - 1);
+    for (let i = first; i < Math.min(100, first + 8); i++) {
+      const row = document.createElement('div');
+      row.id = `virtual-row-${i + 1}`;
+      row.textContent = `Virtual row ${i + 1}`;
+      Object.assign(row.style, { position: 'absolute', top: `${i * 70}px`, width: '100%', height: '70px', background: colors[i % colors.length], borderBottom: '1px solid black' });
+      spacer.append(row);
+    }
+  }
+  viewport.addEventListener('scroll', render);
+  render();
+} else if (route === 'canvas') {
+  size(1200, 1000, 'canvas 700 × 350; wheel changes offset from 0 to 1750');
+  const canvas = document.createElement('canvas');
+  canvas.id = 'canvas';
+  canvas.width = 700;
+  canvas.height = 350;
+  canvas.style.margin = '100px';
+  canvas.style.border = '2px solid black';
+  page.append(canvas);
+  const context = canvas.getContext('2d');
+  let offset = 0;
+  function draw() {
+    context.clearRect(0, 0, 700, 350);
+    for (let i = 0; i < 12; i++) {
+      context.fillStyle = colors[i % colors.length];
+      context.fillRect(0, i * 175 - offset, 700, 175);
+      context.fillStyle = '#000';
+      context.font = '24px sans-serif';
+      context.fillText(`Canvas band ${i + 1}`, 30, i * 175 - offset + 80);
+    }
+    canvas.dataset.offset = String(offset);
+  }
+  canvas.addEventListener('wheel', (event) => { event.preventDefault(); offset = Math.max(0, Math.min(1750, offset + event.deltaY)); draw(); }, { passive: false });
+  draw();
+} else if (route === 'frames') {
+  size(1200, 1800, 'frames 500 × 400 outer CSS px; each frame content 800 × 1200');
+  for (const [id, src] of [['same-origin-frame', '/frame.html'], ['cross-origin-frame', `${crossOrigin}/frame.html`]]) {
+    const frame = document.createElement('iframe');
+    frame.id = id;
+    frame.title = id;
+    frame.src = src;
+    Object.assign(frame.style, { display: 'block', width: '500px', height: '400px', margin: '100px', border: '10px solid #333', transform: 'rotate(2deg)' });
+    page.append(frame);
+  }
+} else if (route === 'mask') {
+  size(1200, 1600);
+  page.style.padding = '100px';
+  page.innerHTML = '<h1>Mask fixture</h1><p id="sensitive">Sensitive account: 1234-5678-9012</p><p id="email">person@example.test</p><p><a id="safe-link" href="/batch1">Safe local link</a></p><label>Secret input <input id="secret-input" value="confidential fixture value"></label>';
+} else {
+  size(800, 400);
+  page.textContent = 'Unknown fixture';
+}
+</script>
+</body>
+</html>
