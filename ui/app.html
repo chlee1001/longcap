@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local Capture</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="header-inner">
+        <h1>Local Capture</h1>
+        <nav aria-label="주 메뉴">
+          <button type="button" data-nav="history">보관함</button>
+          <button type="button" data-nav="batch">일괄 캡처</button>
+          <button type="button" data-nav="settings">설정</button>
+        </nav>
+        <button id="importPdfButton" type="button">PDF 가져오기</button>
+        <input id="pdfFile" type="file" accept="application/pdf" hidden />
+      </div>
+    </header>
+    <main class="app-main">
+      <div id="notice" role="alert" aria-live="assertive"></div>
+      <section id="jobPanel" class="job-panel" aria-label="캡처 작업" hidden>
+        <div id="jobState" role="status" aria-live="polite"></div>
+        <progress
+          id="jobProgress"
+          max="100"
+          value="0"
+          aria-label="캡처 진행률"
+        ></progress>
+        <div class="button-row">
+          <button id="jobPause" type="button">일시정지</button
+          ><button id="jobResume" type="button">계속</button
+          ><button id="jobCancel" type="button">취소</button>
+        </div>
+      </section>
+
+      <section id="historyView" aria-labelledby="historyTitle">
+        <div class="section-heading">
+          <div>
+            <h2 id="historyTitle">보관함</h2>
+            <p>캡처 원본과 편집 내용은 이 기기에 보관됩니다.</p>
+          </div>
+        </div>
+        <div class="toolbar">
+          <label for="search">검색</label
+          ><input id="search" type="search" placeholder="제목 또는 URL 검색" />
+          <label class="check"
+            ><input id="selectAll" type="checkbox" /> 전체 선택</label
+          >
+          <button id="deleteSelected" type="button">선택 삭제</button
+          ><button id="exportSelected" type="button">선택 내보내기</button>
+        </div>
+        <div id="captureList" class="card-grid" aria-label="캡처 목록"></div>
+        <button id="loadMore" type="button">더 보기</button>
+      </section>
+
+      <section id="editorView" aria-label="캡처 편집" data-mode="view" hidden>
+        <div class="editor-header">
+          <button id="backToLibrary" type="button">보관함으로</button>
+          <label for="captureTitle" class="sr-only">제목</label>
+          <input id="captureTitle" type="text" />
+          <span id="dims" class="dims"></span>
+          <span id="saveState" role="status" aria-live="polite"></span>
+          <div class="result-actions">
+            <button id="editToggle" type="button" aria-pressed="false">
+              편집
+            </button>
+            <button id="copyButton" type="button">복사</button>
+            <button id="printButton" type="button">인쇄</button>
+            <select id="exportFormat" aria-label="내보내기 형식">
+              <option value="png">PNG</option>
+              <option value="jpg">JPEG</option>
+              <option value="pdf">PDF</option>
+            </select>
+            <button id="exportButton" class="primary" type="button">
+              저장
+            </button>
+          </div>
+          <div class="zoom-box">
+            <label for="zoom" class="sr-only">확대</label>
+            <select id="zoom">
+              <option value="0.125">12.5%</option>
+              <option value="0.25">25%</option>
+              <option value="0.5">50%</option>
+              <option value="0.75">75%</option>
+              <option value="1" selected>100%</option>
+              <option value="1.5">150%</option>
+              <option value="2">200%</option>
+              <option value="4">400%</option>
+            </select>
+            <button id="fit" type="button">화면에 맞춤</button>
+          </div>
+        </div>
+        <div class="toolbar edit-only" aria-label="편집 명령">
+          <button id="undo" type="button">실행 취소</button
+          ><button id="redo" type="button">다시 실행</button>
+          <button id="duplicate" type="button">복제</button
+          ><button id="deleteObject" type="button">선택 삭제</button>
+          <button id="bringForward" type="button">앞으로</button
+          ><button id="sendBackward" type="button">뒤로</button>
+        </div>
+        <div
+          id="toolButtons"
+          class="toolbar edit-only"
+          role="group"
+          aria-label="편집 도구"
+        >
+          <button type="button" data-tool="select">선택</button
+          ><button type="button" data-tool="crop">자르기</button
+          ><button type="button" data-tool="rect">사각형</button
+          ><button type="button" data-tool="ellipse">타원</button
+          ><button type="button" data-tool="arrow">화살표</button
+          ><button type="button" data-tool="line">직선</button
+          ><button type="button" data-tool="text">텍스트</button
+          ><button type="button" data-tool="highlight">강조</button
+          ><button type="button" data-tool="redact">가리기</button
+          ><button type="button" data-tool="badge">번호</button
+          ><button type="button" data-tool="pen">펜</button
+          ><button type="button" data-tool="marker">마커</button>
+        </div>
+        <div class="editor-grid">
+          <div
+            id="editorViewport"
+            class="editor-viewport"
+            tabindex="0"
+            aria-label="캡처 편집 화면"
+          >
+            <div id="editorSurface" class="editor-surface">
+              <canvas id="editorCanvas" aria-label="캡처 이미지"></canvas>
+            </div>
+          </div>
+          <aside class="editor-sidebar edit-only" aria-label="편집 속성">
+            <fieldset>
+              <legend>스타일</legend>
+              <label for="strokeColor">선 색상</label
+              ><input id="strokeColor" type="color" value="#e23d3d" />
+              <label for="fillColor">채우기 색상</label
+              ><input id="fillColor" type="color" value="#ffffff" />
+              <label class="check"
+                ><input id="fillNone" type="checkbox" checked /> 채우기
+                없음</label
+              >
+              <label for="lineWidth">선 두께</label
+              ><input id="lineWidth" type="number" min="1" max="24" value="3" />
+              <label for="fontSize">글자 크기</label
+              ><input
+                id="fontSize"
+                type="number"
+                min="12"
+                max="96"
+                value="24"
+              />
+              <label for="redactMode">가리기 효과</label
+              ><select id="redactMode">
+                <option value="blur">흐림</option>
+                <option value="pixel">픽셀화</option>
+              </select>
+              <label for="arrowHeads">화살표 방향</label
+              ><select id="arrowHeads">
+                <option value="end">끝</option>
+                <option value="both">양쪽</option>
+              </select>
+            </fieldset>
+            <label for="annotationText">텍스트 내용</label
+            ><textarea id="annotationText" rows="3"></textarea
+            ><button id="applyText" type="button">텍스트 적용</button>
+            <fieldset>
+              <legend>표시 정보</legend>
+              <label for="urlTemplate">테두리 템플릿</label
+              ><select id="urlTemplate">
+                <option value="none">없음</option>
+                <option value="bar">상단 바</option>
+                <option value="barBottom">하단 바</option>
+                <option value="mac">Mac 창</option>
+                <option value="windows">Windows 창</option>
+              </select>
+              <label for="dateFormat">날짜 형식</label
+              ><select id="dateFormat">
+                <option value="date">날짜</option>
+                <option value="datetime">날짜와 시간</option>
+                <option value="iso">ISO</option>
+                <option value="none" selected>없음</option>
+              </select>
+            </fieldset>
+            <h3>레이어</h3>
+            <ul id="layers" class="layers" aria-label="레이어 목록"></ul>
+            <p class="hint">
+              흐림과 픽셀화는 원본을 삭제하지 않습니다. 원본은 이 기기에
+              남습니다.
+            </p>
+          </aside>
+        </div>
+      </section>
+
+      <section id="batchView" aria-labelledby="batchTitle" hidden>
+        <h2 id="batchTitle">일괄 캡처</h2>
+        <p>
+          URL마다 캡처 전용 창에서 활성 페이지를 캡처합니다. 기존 탭은 캡처에
+          사용하지 않습니다. Chrome에서 일괄 캡처를 시작하려면 선택적 모든
+          사이트 접근 권한이 필요합니다. 캡처는 이 기기에 보관하며 업로드하지
+          않습니다.
+        </p>
+        <label for="batchUrls">URL 목록 (한 줄에 하나씩)</label
+        ><textarea
+          id="batchUrls"
+          rows="8"
+          placeholder="https://example.com"
+        ></textarea>
+        <div class="button-row">
+          <button id="useOpenTabs" type="button">열린 탭의 URL 가져오기</button
+          ><button id="startBatch" class="primary" type="button">
+            일괄 캡처 시작</button
+          ><button id="stopBatch" type="button">중지</button
+          ><button id="saveBatchPdf" type="button">PDF로 저장</button>
+        </div>
+        <div id="batchState" role="status" aria-live="polite"></div>
+        <ol id="batchResults" aria-label="일괄 캡처 결과"></ol>
+      </section>
+
+      <section id="settingsView" aria-labelledby="settingsTitle" hidden>
+        <h2 id="settingsTitle">설정</h2>
+        <form id="settingsForm" class="settings-form">
+          <fieldset>
+            <legend>내보내기</legend>
+            <label
+              >기본 형식<select name="format">
+                <option value="png">PNG</option>
+                <option value="jpg">JPEG</option>
+                <option value="pdf">PDF</option>
+              </select></label
+            >
+            <label
+              >JPEG 품질<input
+                name="quality"
+                type="number"
+                min="0"
+                max="1"
+                step="0.01"
+                value="0.92"
+            /></label>
+            <label
+              >PDF 용지<select name="pdfPaper">
+                <option value="one">한 페이지</option>
+                <option value="a4" selected>A4</option>
+                <option value="letter">Letter</option>
+                <option value="legal">Legal</option>
+              </select></label
+            >
+            <label class="check"
+              ><input name="landscape" type="checkbox" /> 가로 방향</label
+            >
+            <label class="check"
+              ><input name="smartSplit" type="checkbox" checked /> 페이지 경계
+              자동 조정</label
+            >
+            <label class="check"
+              ><input name="pdfLinks" type="checkbox" checked /> PDF 링크
+              포함</label
+            >
+            <label class="check"
+              ><input name="pdfText" type="checkbox" checked /> PDF 텍스트
+              포함</label
+            >
+            <label class="check"
+              ><input name="provenance" type="checkbox" /> 로컬 출처 정보와 해시
+              포함</label
+            >
+            <p class="hint">해시는 사이트의 진위나 인증을 보장하지 않습니다.</p>
+            <label class="check"
+              ><input name="includeUrl" type="checkbox" /> 내보낸 파일에 URL
+              포함</label
+            >
+            <label class="check"
+              ><input name="saveAs" type="checkbox" /> 저장 위치 묻기</label
+            >
+            <label>다운로드 폴더<input name="folder" type="text" /></label>
+            <label class="check"
+              ><input name="clipboardFit" type="checkbox" checked /> 큰 이미지는
+              클립보드에 맞게 축소</label
+            >
+          </fieldset>
+          <fieldset>
+            <legend>캡처 제한</legend>
+            <label
+              >이미지 대기 시간 (ms)<input
+                name="imageWaitMs"
+                type="number"
+                min="0"
+                max="60000"
+                value="1500"
+            /></label>
+            <label
+              >최대 타일 수<input
+                name="maxTiles"
+                type="number"
+                min="1"
+                max="2000"
+                value="200"
+            /></label>
+            <label
+              >최대 작업 시간 (ms)<input
+                name="maxDurationMs"
+                type="number"
+                min="1000"
+                max="3600000"
+                value="120000"
+            /></label>
+          </fieldset>
+          <button id="saveSettings" class="primary" type="submit">
+            설정 저장
+          </button>
+        </form>
+        <p id="storageUsage" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+  </body>
+</html>
