@@ -82,9 +82,11 @@ test("element preparation rejects individual transforms and perspective before c
     location: { href: "https://example.com/" },
     window: { scrollTo: (x: number, y: number) => scrolls.push([x, y]) },
     requestAnimationFrame: (callback: () => void) => callback(),
+    // Housekeeping timers (lease, picker expiry) must not keep the test
+    // process alive; short waits inside a command still have to run.
     setTimeout: (...args: Parameters<typeof setTimeout>) => {
       const timer = originalSetTimeout(...args);
-      timer.unref();
+      if ((args[1] ?? 0) >= 1000) timer.unref();
       return timer;
     },
     getComputedStyle: (element: ElementMock) => ({

@@ -253,6 +253,25 @@ if (!root.__localCaptureInstalled) {
     );
   }
 
+  // A tab that was just shown or a window being resized reports a viewport
+  // that will not match later tiles. Measure only after the size holds still.
+  async function settledViewport() {
+    const deadline = performance.now() + 2000;
+    let size = `${innerWidth}x${innerHeight}`;
+    let quietSince = performance.now();
+    while (
+      performance.now() - quietSince < 300 &&
+      performance.now() < deadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const next = `${innerWidth}x${innerHeight}`;
+      if (next !== size) {
+        size = next;
+        quietSince = performance.now();
+      }
+    }
+  }
+
   function stuck(element: HTMLElement) {
     const before = element.getBoundingClientRect();
     const value = element.style.getPropertyValue("position");
@@ -447,6 +466,7 @@ if (!root.__localCaptureInstalled) {
               | { mode?: string; token?: string; imageWaitMs?: number }
               | undefined;
             if (active) restore();
+            await settledViewport();
             if (data?.mode === "element") {
               if (
                 !selected ||
