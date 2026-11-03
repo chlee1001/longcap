@@ -3,6 +3,8 @@ import { EditorController } from "./editor-ui.js";
 import { requestDownloadPermission, downloadFiles } from "./downloads.js";
 import { exportCapture } from "./export.js";
 import { safeUrl, validateSettings } from "./geometry.js";
+import { getOutputRect, renderRegion } from "./render.js";
+import { isTyping, showShortcutHelp } from "./shortcuts.js";
 import {
   deleteBlobs,
   deleteCaptures,
@@ -25,6 +27,7 @@ function node<T extends HTMLElement>(id: string): T {
   return element as T;
 }
 const notice = node<HTMLElement>("notice");
+const toast = node<HTMLElement>("toast");
 const list = node<HTMLElement>("captureList");
 const search = node<HTMLInputElement>("search");
 const more = node<HTMLButtonElement>("loadMore");
@@ -48,10 +51,33 @@ let hasMore = false;
 let historyVersion = 0;
 let job: CaptureJob | null = null;
 let polling = false;
+const thumbnailUrls = new Map<string, string>();
+let thumbnailObserver: IntersectionObserver | null = null;
+let thumbnailVersion = 0;
+let focusSearch = false;
+let goStarted = 0;
 
+function clearThumbnails(): void {
+  thumbnailVersion++;
+  thumbnailObserver?.disconnect();
+  for (const url of thumbnailUrls.values()) URL.revokeObjectURL(url);
+  thumbnailUrls.clear();
+}
+
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
 function notify(message: string, error = false): void {
-  notice.textContent = message;
-  notice.dataset.error = String(error);
+  if (error) {
+    notice.textContent = message;
+    notice.dataset.error = "true";
+    return;
+  }
+  notice.textContent = "";
+  toast.textContent = message;
+  toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.hidden = true;
+  }, 2500);
 }
 function report(error: unknown): void {
   notify(error instanceof Error ? error.message : String(error), true);
@@ -59,6 +85,17 @@ function report(error: unknown): void {
 function show(view: keyof typeof views): void {
   for (const [name, section] of Object.entries(views))
     section.hidden = name !== view;
+  for (const button of document.querySelectorAll<HTMLButtonElement>(
+    "[data-nav]",
+  )) {
+    if (button.dataset.nav === view)
+      button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  }
+  if (view === "history" && focusSearch) {
+    focusSearch = false;
+    search.focus();
+  }
 }
 function selection(): void {
   all.checked =
@@ -68,7 +105,38 @@ function selection(): void {
   deleteButton.disabled = exportButton.disabled = selected.size === 0;
 }
 function renderHistory(): void {
+  clearThumbnails();
   list.replaceChildren();
+  const version = thumbnailVersion;
+  const visibleRecords = new Map<Element, CaptureRecord>();
+  thumbnailObserver = new IntersectionObserver((entries, observer) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      observer.unobserve(entry.target);
+      const record = visibleRecords.get(entry.target);
+      if (!record || !record.tiles.length) continue;
+      void (async () => {
+        const output = getOutputRect(record);
+        const region = {
+          x: 0,
+          y: 0,
+          width: output.width,
+          height: Math.min(output.height, (output.width * 200) / 320),
+        };
+        const canvas = await renderRegion(record, region, 320 / output.width);
+        const blob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob(resolve, "image/png"),
+        );
+        if (!blob || version !== thumbnailVersion) return;
+        const url = URL.createObjectURL(blob);
+        thumbnailUrls.set(record.id, url);
+        const image = document.createElement("img");
+        image.src = url;
+        image.alt = "";
+        entry.target.append(image);
+      })().catch(() => {});
+    }
+  });
   if (!records.length) {
     const empty = document.createElement("p");
     empty.textContent = "캡처가 없습니다.";
@@ -77,6 +145,11 @@ function renderHistory(): void {
   for (const record of records) {
     const card = document.createElement("article");
     card.className = "capture-card";
+    const thumbnail = document.createElement("div");
+    thumbnail.className = "capture-thumbnail";
+    thumbnail.setAttribute("aria-hidden", "true");
+    visibleRecords.set(thumbnail, record);
+    thumbnailObserver.observe(thumbnail);
     const check = document.createElement("input");
     check.type = "checkbox";
     check.checked = selected.has(record.id);
@@ -95,8 +168,16 @@ function renderHistory(): void {
     const url = document.createElement("p");
     url.textContent = record.url;
     const date = document.createElement("p");
+    date.className = "meta";
     date.textContent = new Date(record.createdAt).toLocaleString();
-    card.append(check, open, url, date);
+    const partial = !record.complete || record.warnings.length > 0;
+    card.append(thumbnail, check, open, url, date);
+    if (partial) {
+      const tag = document.createElement("span");
+      tag.className = "tag partial";
+      tag.textContent = "부분 캡처";
+      card.append(tag);
+    }
     if (!record.complete || record.warnings.length) {
       const warning = document.createElement("p");
       warning.textContent = `부분 캡처 또는 경고: ${record.warnings.join(", ")}`;
@@ -157,6 +238,7 @@ function queueNavigation(): void {
         try {
           await editor.close();
         } catch (error) {
+          focusSearch = false;
           history.replaceState(
             null,
             "",
@@ -188,6 +270,7 @@ function queueNavigation(): void {
       if (view === "settings") await loadSettings();
     })
     .catch((error) => {
+      focusSearch = false;
       report(error);
       if (editorId)
         history.replaceState(
@@ -205,6 +288,79 @@ for (const button of document.querySelectorAll<HTMLButtonElement>("[data-nav]"))
   button.addEventListener("click", () =>
     navigate(button.dataset.nav ?? "history"),
   );
+node<HTMLButtonElement>("shortcutHelp").addEventListener(
+  "click",
+  showShortcutHelp,
+);
+document
+  .querySelector<HTMLAnchorElement>(".skip-link")
+  ?.addEventListener("click", (event) => {
+    event.preventDefault();
+    node<HTMLElement>("main").focus();
+  });
+document.addEventListener("keydown", (event) => {
+  if (event.isComposing || isTyping(event.target)) {
+    goStarted = 0;
+    return;
+  }
+  if (document.querySelector("dialog[open]")) {
+    goStarted = 0;
+    if (event.key === "?" && !event.ctrlKey && !event.metaKey && !event.altKey)
+      showShortcutHelp();
+    return;
+  }
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    !event.altKey &&
+    !event.shiftKey &&
+    event.key.toLowerCase() === "a" &&
+    !views.history.hidden
+  ) {
+    event.preventDefault();
+    all.click();
+    return;
+  }
+  if (
+    event.ctrlKey ||
+    event.metaKey ||
+    event.altKey ||
+    (event.shiftKey && event.key !== "?")
+  ) {
+    goStarted = 0;
+    return;
+  }
+  const now = Date.now();
+  const destination =
+    now - goStarted <= 1000
+      ? { h: "history", b: "batch", s: "settings" }[
+          event.key as "h" | "b" | "s"
+        ]
+      : undefined;
+  goStarted = event.key === "g" ? now : 0;
+  if (destination) {
+    navigate(destination);
+  } else if (event.key === "?") {
+    showShortcutHelp();
+  } else if (event.key === "/") {
+    event.preventDefault();
+    if (views.history.hidden) {
+      focusSearch = true;
+      navigate("history");
+    } else search.focus();
+  } else if (
+    event.key === "Escape" &&
+    !views.editor.hidden &&
+    views.editor.dataset.mode === "view"
+  ) {
+    node<HTMLButtonElement>("backToLibrary").click();
+  } else if (
+    event.key === "Delete" &&
+    !views.history.hidden &&
+    selected.size > 0
+  ) {
+    deleteButton.click();
+  }
+});
 node<HTMLButtonElement>("backToLibrary").addEventListener("click", () =>
   navigate("history"),
 );
@@ -325,8 +481,10 @@ pdfUrlLabel.append(pdfUrl);
 const importUrl = document.createElement("button");
 importUrl.type = "button";
 importUrl.textContent = "URL에서 PDF 가져오기";
-views.history.insertBefore(pdfUrlLabel, list);
-views.history.insertBefore(importUrl, list);
+const pdfUrlRow = document.createElement("div");
+pdfUrlRow.className = "toolbar";
+pdfUrlRow.append(pdfUrlLabel, importUrl);
+views.history.insertBefore(pdfUrlRow, list);
 importUrl.addEventListener("click", () => {
   const value = safeUrl(pdfUrl.value.trim());
   if (!value) {
@@ -428,4 +586,11 @@ void refreshJob();
 const timer = setInterval(() => {
   void refreshJob();
 }, 500);
-window.addEventListener("pagehide", () => clearInterval(timer), { once: true });
+window.addEventListener(
+  "pagehide",
+  () => {
+    clearInterval(timer);
+    clearThumbnails();
+  },
+  { once: true },
+);

@@ -8,6 +8,7 @@
     <script type="module" src="app.js"></script>
   </head>
   <body>
+    <a class="skip-link" href="#main">본문으로 건너뛰기</a>
     <header class="app-header">
       <div class="header-inner">
         <h1>Local Capture</h1>
@@ -18,9 +19,17 @@
         </nav>
         <button id="importPdfButton" type="button">PDF 가져오기</button>
         <input id="pdfFile" type="file" accept="application/pdf" hidden />
+        <button
+          id="shortcutHelp"
+          type="button"
+          aria-label="단축키 보기"
+          title="단축키 (?)"
+        >
+          ?
+        </button>
       </div>
     </header>
-    <main class="app-main">
+    <main id="main" class="app-main" tabindex="-1">
       <div id="notice" role="alert" aria-live="assertive"></div>
       <section id="jobPanel" class="job-panel" aria-label="캡처 작업" hidden>
         <div id="jobState" role="status" aria-live="polite"></div>
@@ -316,5 +325,6 @@
         <p id="storageUsage" role="status" aria-live="polite"></p>
       </section>
     </main>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   </body>
 </html>

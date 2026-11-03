@@ -25,6 +25,7 @@ import { updateCapture } from "./storage.js";
 import { exportCapture, exportRecord } from "./export.js";
 import { downloadFiles, requestDownloadPermission } from "./downloads.js";
 import { clipboardScale, guardUnsavedChanges } from "./editor-safety.js";
+import { isTyping, SHORTCUTS } from "./shortcuts.js";
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -110,6 +111,48 @@ export class EditorController {
     );
     this.title.value = record.title;
     element<HTMLSelectElement>("exportFormat").value = settings.format;
+    const hints: Record<string, string> = {
+      editToggle: "편집 전환",
+      fit: "화면에 맞춤",
+      exportButton: "내보내기",
+      copyButton: "이미지 복사",
+      printButton: "인쇄",
+      undo: "실행 취소",
+      redo: "다시 실행",
+      duplicate: "복제",
+      deleteObject: "객체 삭제",
+      sendBackward: "뒤로 보내기",
+      bringForward: "앞으로 가져오기",
+    };
+    for (const [id, label] of Object.entries(hints)) {
+      const entry = SHORTCUTS.find((item) => item.label === label);
+      if (!entry) continue;
+      const button = element<HTMLButtonElement>(id);
+      button.title = `${label} (${entry.keys})`;
+      button.setAttribute(
+        "aria-keyshortcuts",
+        entry.keys
+          .split(" / ")
+          .flatMap((keys) =>
+            keys.includes("Ctrl/Cmd")
+              ? [
+                  keys.replace("Ctrl/Cmd", "Control"),
+                  keys.replace("Ctrl/Cmd", "Meta"),
+                ]
+              : [keys],
+          )
+          .join(" "),
+      );
+    }
+    const zoomControl = element<HTMLSelectElement>("zoom");
+    zoomControl.title = SHORTCUTS.filter(
+      (item) =>
+        item.scope === "result" &&
+        ["확대", "축소", "100%"].includes(item.label),
+    )
+      .map((item) => `${item.label} (${item.keys})`)
+      .join(", ");
+    zoomControl.setAttribute("aria-keyshortcuts", "= - 1");
     this.listen(this.title, "input", () => this.changed());
     this.listen(element("undo"), "click", () => {
       if (this.history.canUndo) {
@@ -137,6 +180,14 @@ export class EditorController {
     for (const button of document.querySelectorAll<HTMLButtonElement>(
       "#toolButtons [data-tool]",
     )) {
+      const entry = SHORTCUTS.find(
+        (item) =>
+          item.scope === "edit" && item.label === button.textContent?.trim(),
+      );
+      if (entry) {
+        button.title = `${entry.label} (${entry.keys})`;
+        button.setAttribute("aria-keyshortcuts", entry.keys);
+      }
       this.listen(button, "click", () => {
         this.tool = button.dataset.tool as Tool;
         this.gesture = null;
@@ -604,18 +655,117 @@ export class EditorController {
     this.commit(edit);
   }
   private key(event: KeyboardEvent): void {
-    if (element("editorView").dataset.mode !== "edit") return;
-    const target = event.target;
     if (
       event.isComposing ||
-      target instanceof HTMLInputElement ||
-      target instanceof HTMLTextAreaElement ||
-      target instanceof HTMLSelectElement ||
-      (target instanceof HTMLElement && target.isContentEditable)
+      isTyping(event.target) ||
+      document.querySelector(".shortcut-dialog[open]")
     )
       return;
     const mod = event.ctrlKey || event.metaKey,
       key = event.key.toLowerCase();
+    const editing = element("editorView").dataset.mode === "edit";
+    if (
+      mod &&
+      !event.altKey &&
+      !event.shiftKey &&
+      (key === "s" || key === "p")
+    ) {
+      event.preventDefault();
+      element<HTMLButtonElement>(
+        key === "s" ? "exportButton" : "printButton",
+      ).click();
+      return;
+    }
+    const copyImage =
+      mod &&
+      !event.altKey &&
+      key === "c" &&
+      (event.shiftKey ||
+        (!this.selected && !window.getSelection()?.toString()));
+    if (copyImage) {
+      event.preventDefault();
+      element<HTMLButtonElement>("copyButton").click();
+      return;
+    }
+    if (!mod && !event.altKey) {
+      if (key === "e" && !event.shiftKey) {
+        event.preventDefault();
+        element<HTMLButtonElement>("editToggle").click();
+        return;
+      }
+      if (
+        key === "+" ||
+        key === "=" ||
+        key === "-" ||
+        key === "0" ||
+        key === "1"
+      ) {
+        event.preventDefault();
+        if (key === "0") element<HTMLButtonElement>("fit").click();
+        else {
+          const zoom = element<HTMLSelectElement>("zoom");
+          const options = Array.from(zoom.options, (option) =>
+            Number(option.value),
+          );
+          const value =
+            key === "1"
+              ? 1
+              : key === "-"
+                ? ([...options]
+                    .reverse()
+                    .find((option) => option < this.zoom) ?? options[0])
+                : (options.find((option) => option > this.zoom) ??
+                  options[options.length - 1]);
+          zoom.value = String(value);
+          zoom.dispatchEvent(new Event("change"));
+        }
+        return;
+      }
+      if (editing && key === "escape") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (this.selected) {
+          this.selected = null;
+          this.sync();
+          this.redraw();
+        } else if (this.tool !== "select") {
+          document
+            .querySelector<HTMLButtonElement>(
+              '#toolButtons [data-tool="select"]',
+            )
+            ?.click();
+        } else element<HTMLButtonElement>("editToggle").click();
+        return;
+      }
+      if (editing && !event.shiftKey) {
+        const entry = SHORTCUTS.find(
+          (item) => item.scope === "edit" && item.keys === key.toUpperCase(),
+        );
+        const button = Array.from(
+          document.querySelectorAll<HTMLButtonElement>(
+            "#toolButtons [data-tool]",
+          ),
+        ).find((item) => item.textContent?.trim() === entry?.label);
+        if (button) {
+          event.preventDefault();
+          button.click();
+          return;
+        }
+        if (key === "[" || key === "]") {
+          event.preventDefault();
+          element<HTMLButtonElement>(
+            key === "[" ? "sendBackward" : "bringForward",
+          ).click();
+          return;
+        }
+      }
+    }
+    if (!editing) return;
+    if (mod && !event.altKey && !event.shiftKey && key === "d") {
+      event.preventDefault();
+      element<HTMLButtonElement>("duplicate").click();
+      return;
+    }
     if (mod && key === "z") {
       event.preventDefault();
       if (event.shiftKey ? this.history.canRedo : this.history.canUndo) {

@@ -35,6 +35,8 @@ function capture(): CaptureRecord {
 class Control extends EventTarget {
   value = "";
   textContent = "";
+  title = "";
+  setAttribute(): void {}
   style: Record<string, string> = {};
   clientWidth = 0;
   clientHeight = 0;

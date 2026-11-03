@@ -691,6 +691,10 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 chrome.commands.onCommand.addListener((command) => {
   void (async () => {
+    if (command === "open-library") {
+      await chrome.tabs.create({ url: chrome.runtime.getURL("app.html") });
+      return;
+    }
     const [tab] = await chrome.tabs.query({
       active: true,
       lastFocusedWindow: true,

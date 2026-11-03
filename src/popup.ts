@@ -1,4 +1,5 @@
 import { safeUrl } from "./geometry.js";
+import { isTyping } from "./shortcuts.js";
 import { deleteBlobs, putBlob } from "./storage.js";
 import {
   callBroker,
@@ -110,8 +111,32 @@ function start(mode: "page" | "element"): void {
 }
 pageButton.addEventListener("click", () => start("page"));
 elementButton.addEventListener("click", () => start("element"));
-element("openLibrary", HTMLButtonElement).addEventListener("click", () => {
+const libraryButton = element("openLibrary", HTMLButtonElement);
+libraryButton.addEventListener("click", () => {
   void callBroker("open-app").catch(report);
+});
+document.addEventListener("keydown", (event) => {
+  if (
+    event.isComposing ||
+    isTyping(event.target) ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.altKey ||
+    event.shiftKey
+  )
+    return;
+  const button =
+    event.key.toLowerCase() === "c"
+      ? pageButton
+      : event.key.toLowerCase() === "e"
+        ? elementButton
+        : event.key.toLowerCase() === "l"
+          ? libraryButton
+          : null;
+  if (button && !button.disabled) {
+    event.preventDefault();
+    button.click();
+  }
 });
 for (const [button, command] of [
   [pause, "pause"],

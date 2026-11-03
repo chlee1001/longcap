@@ -29,6 +29,10 @@
     "pick-element": {
       "suggested_key": { "default": "Alt+Shift+E" },
       "description": "영역 선택"
+    },
+    "open-library": {
+      "suggested_key": { "default": "Alt+Shift+L" },
+      "description": "보관함 열기"
     }
   },
   "content_security_policy": {
