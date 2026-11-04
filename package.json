@@ -1,6 +1,15 @@
 {
   "name": "longcap",
   "version": "0.1.0",
+  "description": "로컬 전용 전체 페이지 캡처·주석 Chrome 확장",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chlee1001/longcap.git"
+  },
+  "homepage": "https://github.com/chlee1001/longcap",
+  "bugs": {
+    "url": "https://github.com/chlee1001/longcap/issues"
+  },
   "private": true,
   "type": "module",
   "engines": {
