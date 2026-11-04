@@ -326,7 +326,7 @@ async function images(
         );
         const bytes = pngWithMetadata(
           new Uint8Array(await blob.arrayBuffer()),
-          { "Local Capture": JSON.stringify(payload) },
+          { "LongCap": JSON.stringify(payload) },
         );
         blob = new Blob([bytes as BlobPart], { type: "image/png" });
       }
@@ -650,7 +650,7 @@ async function pdf(
       y += plan.region.height;
     }
   }
-  doc.setProducer("Local Capture");
+  doc.setProducer("LongCap");
   const data = await doc.save();
   return [
     {

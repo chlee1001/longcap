@@ -12,7 +12,7 @@ const pdf = await PDFDocument.create();
 const font = await pdf.embedFont(StandardFonts.Helvetica);
 for (let page = 1; page <= 2; page++) {
   const sheet = pdf.addPage([612, 792]);
-  sheet.drawText(`Local capture sample PDF - page ${page}`, {
+  sheet.drawText(`LongCap sample PDF - page ${page}`, {
     x: 48,
     y: 720,
     size: 20,
