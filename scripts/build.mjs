@@ -55,3 +55,4 @@ for (const file of [
 ]) {
   await cp(`assets/${file}`, `dist/assets/${file}`);
 }
+await cp("assets/icons", "dist/assets/icons", { recursive: true });
