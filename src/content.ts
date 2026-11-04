@@ -39,6 +39,11 @@ if (!root.__localCaptureInstalled) {
     visibility: string;
     priority: string;
   }> = [];
+  let expanded: Array<{
+    element: HTMLElement;
+    styles: Array<[string, string, string]>;
+    scrollTop: number;
+  }> = [];
   let lease: ReturnType<typeof setTimeout> | undefined;
   let pickerCleanup: (() => void) | undefined;
   let pickerToken = "";
@@ -67,6 +72,14 @@ if (!root.__localCaptureInstalled) {
       else entry.element.style.removeProperty("visibility");
     }
     hidden = [];
+    for (const entry of expanded) {
+      for (const [property, value, priority] of entry.styles) {
+        if (value) entry.element.style.setProperty(property, value, priority);
+        else entry.element.style.removeProperty(property);
+      }
+      entry.element.scrollTop = entry.scrollTop;
+    }
+    expanded = [];
     if (canvasRange) {
       const current = Number(canvasRange.element.dataset.offset);
       if (Number.isFinite(current))
@@ -251,6 +264,40 @@ if (!root.__localCaptureInstalled) {
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     );
+  }
+
+  // A large panel with its own scrollbar would show only its first screen in
+  // a full-page capture. Lay its whole content out while the capture runs.
+  function expandNestedScrollers() {
+    const minArea = innerWidth * innerHeight * 0.15;
+    for (const element of document.body.querySelectorAll<HTMLElement>("*")) {
+      if (["TEXTAREA", "SELECT", "INPUT"].includes(element.tagName)) continue;
+      const style = getComputedStyle(element);
+      if (!/(auto|scroll)/.test(style.overflowY)) continue;
+      if (
+        element.scrollHeight - element.clientHeight < 40 ||
+        element.scrollHeight > 20000 ||
+        element.clientWidth * element.clientHeight < minArea
+      )
+        continue;
+      const props: Array<[string, string]> = [
+        ["overflow", "visible"],
+        ["height", "auto"],
+        ["max-height", "none"],
+      ];
+      if (style.position === "sticky") props.push(["position", "static"]);
+      expanded.push({
+        element,
+        scrollTop: element.scrollTop,
+        styles: props.map(([property]) => [
+          property,
+          element.style.getPropertyValue(property),
+          element.style.getPropertyPriority(property),
+        ]),
+      });
+      for (const [property, value] of props)
+        element.style.setProperty(property, value, "important");
+    }
   }
 
   // A tab that was just shown or a window being resized reports a viewport
@@ -581,6 +628,7 @@ if (!root.__localCaptureInstalled) {
                 throw new Error("Canvas wheel position is not reversible");
               canvasRange = { element, min, max, original };
             }
+            if (data?.mode !== "element" && !scroller) expandNestedScrollers();
             renew();
             await ready();
             return mappedInfo();
