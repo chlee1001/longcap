@@ -28,6 +28,7 @@ for (const file of ["popup.html", "app.html", "offscreen.html", "styles.css"]) {
   await cp(`ui/${file}`, `dist/${file}`);
 }
 await cp("manifest.json", "dist/manifest.json");
+await cp("THIRD_PARTY_NOTICES.txt", "dist/THIRD_PARTY_NOTICES.txt");
 await cp("node_modules/pdfjs-dist/build/pdf.worker.mjs", "dist/pdf.worker.mjs");
 for (const directory of ["cmaps", "standard_fonts"]) {
   await cp(`node_modules/pdfjs-dist/${directory}`, `dist/${directory}`, {
